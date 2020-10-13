@@ -12,6 +12,7 @@ database](https://www.kbwiki.ercoftac.org/w/index.php?title=UFR_3-30_Test_Case).
 
 ## Basic settings
 
+| Parameter       | Value                      |
 |-----------------|----------------------------|
 | Reynolds number | 10600 based on hill height |
 | Hill height     | 1 m                        |
