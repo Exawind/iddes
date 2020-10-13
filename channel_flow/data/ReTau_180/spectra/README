@@ -1,0 +1,23 @@
+The files in this directory (chan180/spectra) contain one-dimensional
+spectra extracted from direct numerical simulations of fully developed
+plane turbulent channel flow at Re_tau=180. The simulations are
+reported in "DNS of Turbulent Channel Flow up to Re_tau=590," by
+R. D. Moser, J. Kim & N. N. Mansour, 1998 (submitted to Physics of
+Fluids). A preprint is available at
+http://www.tam.uiuc.edu/Faculty/Moser/channel. Before final
+publication of a paper citing this data, please check this site for an
+up-to-date reference.
+
+This directory contains a set of files named
+chan180.<extension>.<number>, where the number indicates the
+y-location of the spectra (in + units rounded to the nearest integer),
+and the extension indicates the type of spectra in the file. The
+extensions are
+
+  xspec -- 1-D spectra in the x-direction 
+
+  zspec -- 1-D spectra in the z-direction 
+
+Please report any problems with the data to R. D. Moser
+r-moser@uiuc.edu. 
+
