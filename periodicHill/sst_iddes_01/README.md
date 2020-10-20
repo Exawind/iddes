@@ -10,10 +10,12 @@ This should create a 900k element mesh similar to
 ![periodicHillMesh](../meshes/periodicHillMesh.png)
 
 2.  Run the `periodicHill_sst.yaml` RANS test case to get the initial condition
+The flow should look like:  
+![snapshot.png](../sst/snapshot.png)
 
 3.  Run the `periodicHill_sstiddes.yaml` SST-IDDES test case to get 
 
-The flow should look like:
+The flow should look like:  
 ![periodichill.gif](periodichill.gif)
 
 4.  Postprocess  
