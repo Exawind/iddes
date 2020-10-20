@@ -22,6 +22,12 @@ database](https://www.kbwiki.ercoftac.org/w/index.php?title=UFR_3-30_Test_Case).
 |                 |                            |
 
 ## Requirements to run
+**Submodule**
+Be sure to initialize the submodule before comparing against reference data:
+```bash
+git submodule update --init --recursive
+```
+
 **Mesh generation**  
 Meshes for this case are generated using
 [Pointwise](https://www.pointwise.com/) glyph scripts.
@@ -42,7 +48,7 @@ The periodic hill cases should be run in Nalu-Wind using the either:
 Typical post-processing workflow:
 ```bash
 module load sierra
-epu -processor_count 256 periodicHill.e
+epu -processor_count 256 periodicHill
 python pp.py -m sst/results/periodicHill.e
 python pp_inlet.py -m sst/results/periodicHill.e
 python plotter.py -f sst/results/

@@ -1,0 +1,3 @@
+[submodule "periodicHill/marchdf.periodicHill"]
+	path = periodicHill/marchdf.periodicHill
+	url = git@github.com:marchdf/periodicHill.git
