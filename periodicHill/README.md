@@ -39,5 +39,11 @@ The periodic hill cases should be run in Nalu-Wind using the either:
   user-defined boxes of momentum body forcing from master.
   
 ## Postprocessing
-
-_Add something in here later._
+Typical post-processing workflow:
+```bash
+module load sierra
+epu -processor_count 256 periodicHill.e
+python pp.py -m sst/results/periodicHill.e
+python pp_inlet.py -m sst/results/periodicHill.e
+python plotter.py -f sst/results/
+```
