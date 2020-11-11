@@ -1,104 +1,78 @@
 # Pointwise V18.2 Journal file - Fri Jan 11 15:34:18 2019
-
 package require PWI_Glyph 2.18.2
-
 pw::Application setUndoMaximumLevels 5
 pw::Application reset
 pw::Application markUndoLevel {Journal Reset}
-
 pw::Application clearModified
 
+##########################################  INPUT  #################################################
 
 # domain params
+# Location of top boundary of the domain
 set Ly  3.036
-set span  4.50000
+# Domain length in z-direction (spanwise)
+set span  4.50000 
 
-# 2d or 3d
-set nz  1
-#set nz  100
+# The grid is divided into three layers
+#  ____________________________________
+# |                                    |
+# |                TOP                 |
+# |_____                          _____|
+# |     \________________________/     |
+# |__                               ___|
+# |   \           OUTER            /   |
+# |_   \__________________________/   _|
+#   \                                /
+#    \            INNER             /
+#     \____________________________/
 
-# mesh parameters (original)
-#set dx_in  3.0e-2
-set dy_ini  1.0e-3
+# First cell height away from bottom wall 
+set dy_ini 1.0e-3
+# First cell height away from top wall 
 set dy_top 2.0e-3
-#set dy_interface 0.1
-#set dh1_end 0.05 
-#set dh2_beg 0.1
-#set nh1  100
-#set nmid  30
-#set nh2  50
-#set ny  30
-#set n_inner 50
-
-# more fine with same sep. layer refinement
-#set nz 20
-#set nz 40
-#set nz 60
-#set nz 80
-#set nz 100
+# Initial spacing away from inlet and outlet
 set dx_in  1.5e-2
-###set dy_interface 0.025
-#set dh1_end 0.05 
-#set dh1_end 0.04
-#set dh2_beg 0.05
-###set nh1  120
-###set nmid  70
-###set ny  60
-###set bl_growth_inner 1.1
-###set bl_growth_outer 1.0
-###set n_inner 37
-###set n_outer 15
-
-# piggy back on above with attempt to work with extra zeta in v2f
+# Y spacing ABOVE the interface between the outer and top regions
+# The spacing BELOW is not prescribed by the user, it is determined by the 
+# extrusion solver
 set dy_interface 0.015
+
+# Number of elements in top region
 set ny  70
+# Growth rate in inner region
 set bl_growth_inner 1.1
+# Number of elements in inner region
 set n_inner 32
+# Growth rate in outer region
 set bl_growth_outer 1.0
+# Number of elements in outer region
 set n_outer 20
-
-# ultra crs
-#set ERUN 20
-#set dh1_end 0.1
-#set dh2_beg 0.1333
-#set nz 30
-#set nh1  45
-#set nmid  27
-
-# crs
+# Number of smoothing iterations
 set ERUN 10
+# Spacing on the left endpoint of the bottom boundary (at inlet)
 set dh1_end 0.08
+# Spacing in the center of the bottom boundary (midpoint in x-direction)
 set dh2_beg 0.1
+
+# Number of spanwise elements (z-dir)
 set nz 40
+# Number of elements on one half of the bottom hill boundary
 set nh1  60
+# Number of elements on one half of the flat region on the bottom boundary
 set nmid  35
 
-# mid
-#set ERUN 5
-#set dh1_end 0.06
-#set dh2_beg 0.075
-#set nz 60
-#set nh1  90
-#set nmid  53
+#########################################  CREATE DOMAIN  ###########################################
 
-# fne
-#set ERUN 5
-#set dh1_end 0.04
-#set dh2_beg 0.05
-#set nz 80
-#set nh1  120
-#set nmid  70
-
-
-### CREATE DOMAIN ###
+# Create curve for left half of the bottom boundary, based on the dat file.
+# This will already have a point distribution on it, but we will discard that distribution later.
 set _TMP(mode_1) [pw::Application begin GridImport]
-  $_TMP(mode_1) initialize -strict -type {Segment} {/Users/mhenryde/exawind/cases/periodicHill/meshes/periodicHill.dat}
+  $_TMP(mode_1) initialize -strict -type {Segment} {periodicHill.dat}
   $_TMP(mode_1) read
   $_TMP(mode_1) convert
 $_TMP(mode_1) end
 unset _TMP(mode_1)
-pw::Application markUndoLevel {Import Grid}
 
+# Create curve for the left half of the top boundary
 set _TMP(mode_1) [pw::Application begin Create]
   set _TMP(PW_1) [pw::SegmentSpline create]
   $_TMP(PW_1) addPoint {0.0000000 3.036 0.0000000}
@@ -109,8 +83,8 @@ set _TMP(mode_1) [pw::Application begin Create]
   $_CN(1) calculateDimension
 $_TMP(mode_1) end
 unset _TMP(mode_1)
-pw::Application markUndoLevel {Create 2 Point Connector}
 
+# Create curve that forms the left (inlet) boundary
 set _TMP(mode_1) [pw::Application begin Create]
   set _TMP(PW_1) [pw::SegmentSpline create]
   $_TMP(PW_1) delete
@@ -128,8 +102,9 @@ set _TMP(mode_1) [pw::Application begin Create]
   unset _TMP(PW_1)
 $_TMP(mode_1) end
 unset _TMP(mode_1)
-pw::Application markUndoLevel {Create Connector}
 
+# Create curve that forms the right boundary, which will be
+# in the center of the domain.
 set _TMP(mode_1) [pw::Application begin Create]
   set _TMP(PW_1) [pw::SegmentSpline create]
   $_TMP(PW_1) addPoint [$_CN(2) getPosition -arc 1]
@@ -140,20 +115,25 @@ set _TMP(mode_1) [pw::Application begin Create]
   $_CN(4) calculateDimension
 $_TMP(mode_1) end
 unset _TMP(mode_1)
-pw::Application markUndoLevel {Create 2 Point Connector}
 
+# At this point, we have a domain that looks like so:
+# |------------|
+# |            |
+# |            |
+# |_           |
+#   \          |
+#    \_________|
 
+######################################################  PARTITION CONNECTORS  ################################################
 
-
-### PARTITION CONNECTORS ###
-
+# Partition the bottom connector in two, with the split located at x=1.99147
 set _TMP(split_params) [list]
 lappend _TMP(split_params) [$_CN(2) getParameter -closest [pw::Application getXYZ [$_CN(2) closestPoint {1.99147 0 0}]]]
 set _TMP(PW_1) [$_CN(2) split $_TMP(split_params)]
 unset _TMP(PW_1)
 unset _TMP(split_params)
-pw::Application markUndoLevel {Split}
 
+# Distribute nh1 points evenly on bottom-left connector, 
 set _CN(5) [pw::GridEntity getByName con-1-split-1]
 set _TMP(mode_1) [pw::Application begin Dimension]
   set _TMP(PW_1) [pw::Collection create]
@@ -164,8 +144,8 @@ set _TMP(mode_1) [pw::Application begin Dimension]
   $_TMP(mode_1) balance -resetGeneralDistributions
 $_TMP(mode_1) end
 unset _TMP(mode_1)
-pw::Application markUndoLevel {Dimension}
 
+# Distribute nmid points evenly on the bottom-right connector.
 set _TMP(mode_1) [pw::Application begin Dimension]
   set _CN(6) [pw::GridEntity getByName con-1-split-2]
   set _TMP(PW_1) [pw::Collection create]
@@ -176,30 +156,8 @@ set _TMP(mode_1) [pw::Application begin Dimension]
   $_TMP(mode_1) balance -resetGeneralDistributions
 $_TMP(mode_1) end
 unset _TMP(mode_1)
-pw::Application markUndoLevel {Dimension}
 
-set _TMP(mode_1) [pw::Application begin Dimension]
-  set _TMP(PW_1) [pw::Collection create]
-  $_TMP(PW_1) set [list $_CN(3)]
-  $_TMP(PW_1) do setDimension -resetDistribution $ny
-  $_TMP(PW_1) delete
-  unset _TMP(PW_1)
-  $_TMP(mode_1) balance -resetGeneralDistributions
-$_TMP(mode_1) end
-unset _TMP(mode_1)
-pw::Application markUndoLevel {Dimension}
-
-set _TMP(mode_1) [pw::Application begin Dimension]
-  set _TMP(PW_1) [pw::Collection create]
-  $_TMP(PW_1) set [list $_CN(4)]
-  $_TMP(PW_1) do setDimension -resetDistribution $ny
-  $_TMP(PW_1) delete
-  unset _TMP(PW_1)
-  $_TMP(mode_1) balance -resetGeneralDistributions
-$_TMP(mode_1) end
-unset _TMP(mode_1)
-pw::Application markUndoLevel {Dimension}
-
+# Distribute the same number of points on the top as the bottom
 set _TMP(mode_1) [pw::Application begin Dimension]
   set _TMP(PW_1) [pw::Collection create]
   $_TMP(PW_1) set [list $_CN(1)]
@@ -209,92 +167,35 @@ set _TMP(mode_1) [pw::Application begin Dimension]
   $_TMP(mode_1) balance -resetGeneralDistributions
 $_TMP(mode_1) end
 unset _TMP(mode_1)
-pw::Application markUndoLevel {Dimension}
 
-set _TMP(mode_1) [pw::Application begin Modify [list $_CN(3)]]
-  [[$_CN(3) getDistribution 1] getEndSpacing] setValue $dy_ini
-$_TMP(mode_1) end
-unset _TMP(mode_1)
-pw::Application markUndoLevel {Distribute}
-
-set _TMP(mode_1) [pw::Application begin Modify [list $_CN(3)]]
-$_TMP(mode_1) end
-unset _TMP(mode_1)
-pw::Application markUndoLevel {Distribute}
-
-set _TMP(mode_1) [pw::Application begin Modify [list $_CN(4)]]
-  [[$_CN(4) getDistribution 1] getBeginSpacing] setValue $dy_ini
-$_TMP(mode_1) end
-unset _TMP(mode_1)
-pw::Application markUndoLevel {Distribute}
-
-set _TMP(mode_1) [pw::Application begin Modify [list $_CN(4)]]
-$_TMP(mode_1) end
-unset _TMP(mode_1)
-pw::Application markUndoLevel {Distribute}
-
+# Redistribute the hill points to match initial spacing dx_in
 set _TMP(mode_1) [pw::Application begin Modify [list $_CN(5)]]
   [[$_CN(5) getDistribution 1] getBeginSpacing] setValue $dx_in
 $_TMP(mode_1) end
 unset _TMP(mode_1)
-pw::Application markUndoLevel {Distribute}
 
-set _TMP(mode_1) [pw::Application begin Modify [list $_CN(5)]]
-$_TMP(mode_1) end
-unset _TMP(mode_1)
-pw::Application markUndoLevel {Distribute}
-
-set _TMP(mode_1) [pw::Application begin Modify [list $_CN(3)]]
-  [[$_CN(3) getDistribution 1] getBeginSpacing] setValue $dy_top
-$_TMP(mode_1) end
-unset _TMP(mode_1)
-pw::Application markUndoLevel {Distribute}
-
-set _TMP(mode_1) [pw::Application begin Modify [list $_CN(3)]]
-$_TMP(mode_1) end
-unset _TMP(mode_1)
-pw::Application markUndoLevel {Distribute}
-
-set _TMP(mode_1) [pw::Application begin Modify [list $_CN(4)]]
-  [[$_CN(4) getDistribution 1] getEndSpacing] setValue $dy_top
-$_TMP(mode_1) end
-unset _TMP(mode_1)
-pw::Application markUndoLevel {Distribute}
-
-set _TMP(mode_1) [pw::Application begin Modify [list $_CN(4)]]
-$_TMP(mode_1) end
-unset _TMP(mode_1)
-pw::Application markUndoLevel {Distribute}
-
-
+# Redistribute points on the hill to match the prescribed spacing on the right endpoint, dh1_end
 set _TMP(mode_1) [pw::Application begin Modify [list $_CN(5)]]
   [[$_CN(5) getDistribution 1] getEndSpacing] setValue $dh1_end
 $_TMP(mode_1) end
 unset _TMP(mode_1)
-pw::Application markUndoLevel {Distribute}
 
-set _TMP(mode_1) [pw::Application begin Modify [list $_CN(5)]]
-$_TMP(mode_1) end
-unset _TMP(mode_1)
-pw::Application markUndoLevel {Distribute}
-
+# Redistribute the points on the bottom right connector to match
+# the prescribed left endpoint spacing, dh1_end
 set _TMP(mode_1) [pw::Application begin Modify [list $_CN(6)]]
   [[$_CN(6) getDistribution 1] getBeginSpacing] setValue $dh1_end
 $_TMP(mode_1) end
 unset _TMP(mode_1)
-pw::Application markUndoLevel {Distribute}
 
+# Make the bottom right connector match the spacing on the right endpoint
 set _TMP(mode_1) [pw::Application begin Modify [list $_CN(6)]]
   [[$_CN(6) getDistribution 1] getEndSpacing] setValue $dh2_beg
 $_TMP(mode_1) end
 unset _TMP(mode_1)
-pw::Application markUndoLevel {Distribute}
 
-set _TMP(mode_1) [pw::Application begin Modify [list $_CN(6)]]
-$_TMP(mode_1) end
-unset _TMP(mode_1)
-pw::Application markUndoLevel {Distribute}
-
+# Don't understand what this does
+# This might help to understand
+# https://github.com/pointwise/GeomToMesh/blob/master/GMUtility.glf
 set _TMP(mode_1) [pw::Application begin Modify [list $_CN(1)]]
   set _TMP(dist_1) [pw::DistributionGeneral create [list [list $_CN(5) 1] [list $_CN(6) 1]]]
   # Clear spacings so the distribution will scale properly
@@ -305,27 +206,20 @@ set _TMP(mode_1) [pw::Application begin Modify [list $_CN(1)]]
   unset _TMP(dist_1)
 $_TMP(mode_1) end
 unset _TMP(mode_1)
-pw::Application markUndoLevel {Distribute}
 
-set _TMP(mode_1) [pw::Application begin Modify [list $_CN(1)]]
-$_TMP(mode_1) end
-unset _TMP(mode_1)
-pw::Application markUndoLevel {Distribute}
+################################  CREATE INNER AND OUTER BL REGIONS ############################
 
-
-### GROW BL ###
-
+# Delete connectors 3 and 4 (inlet and outlet)
 pw::Entity delete [list $_CN(3)]
-pw::Application markUndoLevel {Delete}
-
 pw::Entity delete [list $_CN(4)]
-pw::Application markUndoLevel {Delete}
 
+# Combine together connectors 5 and 6 (bottom portion), creating connector 8.
 set _TMP(PW_1) [pw::Connector join -reject _TMP(ignored) -keepDistribution [list $_CN(6) $_CN(5)]]
 unset _TMP(ignored)
 unset _TMP(PW_1)
-pw::Application markUndoLevel {Join}
 
+# Extrude the bottom surface using a hyperbolic system to create inner and outer layers
+# This creates a new connector 5 on the left, 4 at the top of the extrusion, and 3 on the right
 set _TMP(mode_1) [pw::Application begin Create]
   set _CN(8) [pw::GridEntity getByName con-1-split-1]
   set _TMP(PW_1) [pw::Edge createFromConnectors [list $_CN(8)]]
@@ -351,9 +245,8 @@ set _TMP(mode_1) [pw::Application begin ExtrusionSolver [list $_DM(1)]]
 $_TMP(mode_1) end
 unset _TMP(mode_1)
 unset _TMP(edge_1)
-pw::Application markUndoLevel {Extrude, Normal}
 
-
+# Don't understand what this does
 # copy distro again to top
 set _TMP(mode_1) [pw::Application begin Modify [list $_CN(1)]]
   set _CN(9) [pw::GridEntity getByName con-4]
@@ -367,18 +260,10 @@ set _TMP(mode_1) [pw::Application begin Modify [list $_CN(1)]]
   unset _TMP(dist_1)
 $_TMP(mode_1) end
 unset _TMP(mode_1)
-pw::Application markUndoLevel {Distribute}
 
-set _TMP(mode_1) [pw::Application begin Modify [list $_CN(1)]]
-$_TMP(mode_1) end
-unset _TMP(mode_1)
-pw::Application markUndoLevel {Distribute}
+###############################  CREATE REST OF 2D MESH  ###################################
 
-
-
-
-
-### 2D MESH ###
+# Spline to form the rest of the inlet.  This part will be connector 6.
 set _TMP(mode_1) [pw::Application begin Create]
   set _TMP(PW_1) [pw::SegmentSpline create]
   set _CN(9) [pw::GridEntity getByName con-4]
@@ -391,8 +276,8 @@ set _TMP(mode_1) [pw::Application begin Create]
   $_CN(11) calculateDimension
 $_TMP(mode_1) end
 unset _TMP(mode_1)
-pw::Application markUndoLevel {Create 2 Point Connector}
 
+# Spline to form the rest of the outlet.  This will be connector 7.
 set _TMP(mode_1) [pw::Application begin Create]
   set _TMP(PW_1) [pw::SegmentSpline create]
   set _CN(12) [pw::GridEntity getByName con-3]
@@ -404,14 +289,8 @@ set _TMP(mode_1) [pw::Application begin Create]
   $_CN(13) calculateDimension
 $_TMP(mode_1) end
 unset _TMP(mode_1)
-pw::Application markUndoLevel {Create 2 Point Connector}
 
-set _TMP(mode_1) [pw::Application begin Create]
-  set _TMP(PW_1) [pw::SegmentSpline create]
-  $_TMP(PW_1) delete
-  unset _TMP(PW_1)
-$_TMP(mode_1) abort
-unset _TMP(mode_1)
+# Apply ny evenly spaced points on the new inlet segment
 set _TMP(mode_1) [pw::Application begin Dimension]
   set _TMP(PW_1) [pw::Collection create]
   $_TMP(PW_1) set [list $_CN(11)]
@@ -421,8 +300,8 @@ set _TMP(mode_1) [pw::Application begin Dimension]
   $_TMP(mode_1) balance -resetGeneralDistributions
 $_TMP(mode_1) end
 unset _TMP(mode_1)
-pw::Application markUndoLevel {Dimension}
 
+# Same on outlet
 set _TMP(mode_1) [pw::Application begin Dimension]
   set _TMP(PW_1) [pw::Collection create]
   $_TMP(PW_1) set [list $_CN(13)]
@@ -432,49 +311,28 @@ set _TMP(mode_1) [pw::Application begin Dimension]
   $_TMP(mode_1) balance -resetGeneralDistributions
 $_TMP(mode_1) end
 unset _TMP(mode_1)
-pw::Application markUndoLevel {Dimension}
 
-set _TMP(mode_1) [pw::Application begin Dimension]
-$_TMP(mode_1) end
-unset _TMP(mode_1)
-pw::Application markUndoLevel {Dimension}
-
+# Adjust the spacing on the outer inlet segment
 set _TMP(mode_1) [pw::Application begin Modify [list $_CN(11)]]
   [[$_CN(11) getDistribution 1] getEndSpacing] setValue $dy_interface
 $_TMP(mode_1) end
 unset _TMP(mode_1)
-pw::Application markUndoLevel {Distribute}
-
 set _TMP(mode_1) [pw::Application begin Modify [list $_CN(11)]]
   [[$_CN(11) getDistribution 1] getBeginSpacing] setValue $dy_top
 $_TMP(mode_1) end
 unset _TMP(mode_1)
-pw::Application markUndoLevel {Distribute}
 
-set _TMP(mode_1) [pw::Application begin Modify [list $_CN(11)]]
-$_TMP(mode_1) end
-unset _TMP(mode_1)
-pw::Application markUndoLevel {Distribute}
-
+# Adjust the spacing on the new outlet
 set _TMP(mode_1) [pw::Application begin Modify [list $_CN(13)]]
   [[$_CN(13) getDistribution 1] getEndSpacing] setValue $dy_interface
 $_TMP(mode_1) end
 unset _TMP(mode_1)
-pw::Application markUndoLevel {Distribute}
-
 set _TMP(mode_1) [pw::Application begin Modify [list $_CN(13)]]
   [[$_CN(13) getDistribution 1] getBeginSpacing] setValue $dy_top
 $_TMP(mode_1) end
 unset _TMP(mode_1)
-pw::Application markUndoLevel {Distribute}
 
-set _TMP(mode_1) [pw::Application begin Modify [list $_CN(13)]]
-$_TMP(mode_1) end
-unset _TMP(mode_1)
-pw::Application markUndoLevel {Distribute}
-
-
-
+# Generate the top part of the domain
 set _TMP(mode_1) [pw::Application begin Create]
   set _TMP(edge_1) [pw::Edge create]
   $_TMP(edge_1) addConnector $_CN(9)
@@ -495,32 +353,28 @@ set _TMP(mode_1) [pw::Application begin Create]
   unset _TMP(edge_1)
 $_TMP(mode_1) end
 unset _TMP(mode_1)
-pw::Application markUndoLevel {Assemble Domain}
 
-set _TMP(mode_1) [pw::Application begin Create]
-$_TMP(mode_1) abort
-unset _TMP(mode_1)
+#############################################  SMOOTHING  ##################################################
 
-
-### SMOOTH INTERFACE ###
+# Join the inner/outer and top domains
 set _TMP(face_1) [pw::FaceStructured create]
 $_TMP(face_1) delete
 unset _TMP(face_1)
 set _TMP(PW_1) [pw::DomainStructured join -reject _TMP(ignored) [list $_DM(2) $_DM(1)]]
 unset _TMP(ignored)
 unset _TMP(PW_1)
-pw::Application markUndoLevel {Join}
 
+# Join the inlet connectors
 set _TMP(PW_1) [pw::Connector join -reject _TMP(ignored) -keepDistribution [list $_CN(11) $_CN(10)]]
 unset _TMP(ignored)
 unset _TMP(PW_1)
-pw::Application markUndoLevel {Join}
 
+# Join the outlet connectors
 set _TMP(PW_1) [pw::Connector join -reject _TMP(ignored) -keepDistribution [list $_CN(12) $_CN(13)]]
 unset _TMP(ignored)
 unset _TMP(PW_1)
-pw::Application markUndoLevel {Join}
 
+# Smooth the combined domains
 set _DM(3) [pw::GridEntity getByName dom-1]
 set _TMP(mode_1) [pw::Application begin EllipticSolver [list $_DM(3)]]
   set _TMP(SUB_1) [$_DM(3) getSubGrid 1]
@@ -536,13 +390,12 @@ $_TMP(mode_1) end
 unset _TMP(mode_1)
 unset _TMP(SUB_2)
 unset _TMP(SUB_1)
-pw::Application markUndoLevel {Solve}
 
-### MIRROR AND JOIN
+###########################################  MIRROR AND JOIN  #####################################
+
+# Copy the whole thing and mirror it
 pw::Application clearClipboard
 pw::Application setClipboard [list $_DM(2)]
-pw::Application markUndoLevel {Copy}
-
 set _TMP(mode_1) [pw::Application begin Paste]
   set _TMP(PW_1) [$_TMP(mode_1) getEntities]
   set _TMP(mode_2) [pw::Application begin Modify $_TMP(PW_1)]
@@ -551,8 +404,8 @@ set _TMP(mode_1) [pw::Application begin Paste]
   unset _TMP(mode_2)
 $_TMP(mode_1) end
 unset _TMP(mode_1)
-pw::Application markUndoLevel {Paste}
 
+# Join the two halves 
 set _DM(3) [pw::GridEntity getByName dom-1]
 set _DM(4) [pw::GridEntity getByName dom-2]
 set _TMP(face_1) [pw::FaceStructured create]
@@ -561,21 +414,21 @@ unset _TMP(face_1)
 set _TMP(PW_1) [pw::DomainStructured join -reject _TMP(ignored) [list $_DM(3) $_DM(4)]]
 unset _TMP(ignored)
 unset _TMP(PW_1)
-pw::Application markUndoLevel {Join}
 
+# Join the top connectors
 set _CN(12) [pw::GridEntity getByName con-7]
 set _TMP(PW_1) [pw::Connector join -reject _TMP(ignored) -keepDistribution [list $_CN(12) $_CN(1)]]
 unset _TMP(ignored)
 unset _TMP(PW_1)
-pw::Application markUndoLevel {Join}
 
+# Join the bottom connectors
 set _CN(13) [pw::GridEntity getByName con-1-split-2]
 set _TMP(PW_1) [pw::Connector join -reject _TMP(ignored) -keepDistribution [list $_CN(13) $_CN(6)]]
 unset _TMP(ignored)
 unset _TMP(PW_1)
-pw::Application markUndoLevel {Join}
 
-### EXTRUDE TO 3D ###
+#########################################  EXTRUDE TO 3D  ##########################################
+
 set _TMP(mode_1) [pw::Application begin Create]
   set _TMP(PW_1) [pw::FaceStructured createFromDomains [list $_DM(2)]]
   set _TMP(face_1) [lindex $_TMP(PW_1) 0]
@@ -594,24 +447,15 @@ set _TMP(mode_1) [pw::Application begin ExtrusionSolver [list $_BL(1)]]
 $_TMP(mode_1) end
 unset _TMP(mode_1)
 unset _TMP(face_1)
-pw::Application markUndoLevel {Extrude, Translate}
 
 pw::Application setCAESolver {EXODUS II} 3
-pw::Application markUndoLevel {Set Dimension 3D}
 
-
-### INTERIOR AND BOUNDARY CONDITIONS
-
+###############################  INTERIOR AND BOUNDARY CONDITIONS  #################################
 # Appended by Pointwise V18.2 - Wed Jan 29 07:40:21 2020
 
 set _TMP(PW_1) [pw::VolumeCondition create]
-pw::Application markUndoLevel {Create VC}
-
 $_TMP(PW_1) setName "interior"
-pw::Application markUndoLevel {Name VC}
-
 $_TMP(PW_1) apply [list $_BL(1)]
-pw::Application markUndoLevel {Set VC}
 
 unset _TMP(PW_1)
 set _DM(3) [pw::GridEntity getByName dom-2]
@@ -621,88 +465,64 @@ set _DM(6) [pw::GridEntity getByName dom-5]
 set _DM(7) [pw::GridEntity getByName dom-6]
 set _TMP(PW_1) [pw::BoundaryCondition getByName {Unspecified}]
 set _TMP(PW_2) [pw::BoundaryCondition create]
-pw::Application markUndoLevel {Create BC}
 
 set _TMP(PW_3) [pw::BoundaryCondition getByName {bc-2}]
 unset _TMP(PW_2)
 $_TMP(PW_3) setName {inlet}
-pw::Application markUndoLevel {Name BC}
 
 $_TMP(PW_3) setPhysicalType -usage CAE {Side Set}
-pw::Application markUndoLevel {Change BC Type}
 
 set _TMP(PW_4) [pw::BoundaryCondition create]
-pw::Application markUndoLevel {Create BC}
 
 set _TMP(PW_5) [pw::BoundaryCondition getByName {bc-3}]
 unset _TMP(PW_4)
 $_TMP(PW_5) setName {outlet}
-pw::Application markUndoLevel {Name BC}
 
 $_TMP(PW_5) setPhysicalType -usage CAE {Side Set}
-pw::Application markUndoLevel {Change BC Type}
 
 set _TMP(PW_6) [pw::BoundaryCondition create]
-pw::Application markUndoLevel {Create BC}
 
 set _TMP(PW_7) [pw::BoundaryCondition getByName {bc-4}]
 unset _TMP(PW_6)
 $_TMP(PW_7) setName {front}
-pw::Application markUndoLevel {Name BC}
 
 set _TMP(PW_8) [pw::BoundaryCondition create]
-pw::Application markUndoLevel {Create BC}
 
 set _TMP(PW_9) [pw::BoundaryCondition getByName {bc-5}]
 unset _TMP(PW_8)
 $_TMP(PW_9) setName {back}
-pw::Application markUndoLevel {Name BC}
 
 $_TMP(PW_7) setPhysicalType -usage CAE {Side Set}
-pw::Application markUndoLevel {Change BC Type}
 
 $_TMP(PW_9) setPhysicalType -usage CAE {Side Set}
-pw::Application markUndoLevel {Change BC Type}
 
 set _TMP(PW_10) [pw::BoundaryCondition create]
-pw::Application markUndoLevel {Create BC}
 
 set _TMP(PW_11) [pw::BoundaryCondition getByName {bc-6}]
 unset _TMP(PW_10)
 $_TMP(PW_11) setName {top}
-pw::Application markUndoLevel {Name BC}
 
 $_TMP(PW_11) setPhysicalType -usage CAE {Side Set}
-pw::Application markUndoLevel {Change BC Type}
 
 set _TMP(PW_12) [pw::BoundaryCondition create]
-pw::Application markUndoLevel {Create BC}
 
 set _TMP(PW_13) [pw::BoundaryCondition getByName {bc-7}]
 unset _TMP(PW_12)
 $_TMP(PW_13) setName {wall}
-pw::Application markUndoLevel {Name BC}
 
 $_TMP(PW_13) setPhysicalType -usage CAE {Side Set}
-pw::Application markUndoLevel {Change BC Type}
 
 $_TMP(PW_7) apply [list [list $_BL(1) $_DM(7)]]
-pw::Application markUndoLevel {Set BC}
 
 $_TMP(PW_9) apply [list [list $_BL(1) $_DM(2)]]
-pw::Application markUndoLevel {Set BC}
 
 $_TMP(PW_3) apply [list [list $_BL(1) $_DM(6)]]
-pw::Application markUndoLevel {Set BC}
 
 $_TMP(PW_5) apply [list [list $_BL(1) $_DM(4)]]
-pw::Application markUndoLevel {Set BC}
 
 $_TMP(PW_13) apply [list [list $_BL(1) $_DM(3)]]
-pw::Application markUndoLevel {Set BC}
 
 $_TMP(PW_11) apply [list [list $_BL(1) $_DM(5)]]
-pw::Application markUndoLevel {Set BC}
 
 unset _TMP(PW_1)
 unset _TMP(PW_3)
@@ -712,9 +532,10 @@ unset _TMP(PW_9)
 unset _TMP(PW_11)
 unset _TMP(PW_13)
 
-### SAVE
+#########################################  SAVE  ############################################
+
 set _TMP(mode_1) [pw::Application begin CaeExport [pw::Entity sort [list $_BL(1)]]]
-  $_TMP(mode_1) initialize -strict -type CAE {/Users/mhenryde/exawind/cases/periodicHill/meshes/periodicHill.exo}
+  $_TMP(mode_1) initialize -strict -type CAE {periodicHill.exo}
   $_TMP(mode_1) verify
   $_TMP(mode_1) write
 $_TMP(mode_1) end
