@@ -1,0 +1,87 @@
+# -*- mode: yaml -*-
+#
+# Nalu Preprocessing utility
+#
+# Generate a temperature profile with capping inversion for use with ablNeutralEdge case
+#
+
+nalu_abl_mesh:
+  output_db: channel_2000.exo
+
+  spec_type: bounding_box
+
+  fluid_part_name: fluid-HEX
+
+  vertices:
+  - [0.0, 0.0, 0.0]
+  - [8.0, 3.0, 2.0]
+
+  mesh_dimensions: [80, 60, 196]
+
+  xmin_boundary_name: inlet
+
+  xmax_boundary_name: outlet
+
+  ymin_boundary_name: side_fore
+
+  ymax_boundary_name: side_aft
+
+  zmin_boundary_name: wall
+
+  zmax_boundary_name: wall
+
+# z direction has a mesh stretching factor in both directions
+  z_spacing:
+    spacing_type: geometric_stretching
+#    stretching_factor: 1.07
+    stretching_factor: 1.05
+    bidirectional: true
+
+# Mandatory section for Nalu preprocessing
+nalu_preprocess:
+  # Name of the input exodus database
+  input_db: channel_2000.exo
+  # Name of the output exodus database
+  output_db: channel_2000.exo
+
+  # Nalu preprocessor expects a list of tasks to be performed on the mesh and
+  # field data structures
+  tasks:
+  - init_abl_fields
+
+  init_abl_fields:
+
+    # Fluid part is the interior mesh block(s) in the mesh. The default block is
+    # `fluid` if the mesh was generated using `abl_mesh` utility.
+    #
+    # Use `ncdump -v eb_names <exodus_file>` to determine the mesh blocks
+    #
+    fluid_parts: [fluid-HEX]
+
+    temperature:
+      heights: [0, 650.0, 750.0, 1000.0]
+      values: [300.0, 300.0, 308.0, 308.75]
+
+      # Optional section to add random perturbations to temperature field
+#      perturbations:
+#        amplitude: 0.8 # in Kelvin
+#        cutoff_height: 600.0 # Perturbations below capping inversion
+#        skip_periodic_parts: [east, west, north, south]
+
+    velocity:
+      heights:
+      - 0
+      - 2.0
+      values:
+      - - 12.0
+        - 0.0
+        - 0.0
+      - - 12.0
+        - 0.0
+        - 0.0
+      perturbations:
+        reference_height: .5   # Reference height for damping
+        amplitude: [1.0, 1.0]    # Perturbation amplitudes in Ux and Uy
+        periods: [4.0, 4.0]      # Num. periods in x and y directions
+
+
