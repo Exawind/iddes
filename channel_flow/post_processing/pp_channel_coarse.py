@@ -11,6 +11,7 @@ import pandas as pd
 from mpi4py import MPI
 import stk
 from scipy.interpolate import griddata
+import sys
 
 # ========================================================================
 #
@@ -18,7 +19,7 @@ from scipy.interpolate import griddata
 #
 # ========================================================================
 channel_xplanes = [2, 4, 6]
-dx              = 0.05
+dx              = 0.1
 ninterp         = 201
 interiorname    = "fluid-HEX"  # "interior-hex"
 
@@ -162,16 +163,19 @@ if __name__ == "__main__":
         twname = os.path.join(fdir, "tw.dat")
         tw.to_csv(twname, index=False)
 
+
     # Extract (average) velocity data
     vel_data = None
     for tstep in tavg:
         ftime, missing = mesh.stkio.read_defined_input_fields(tstep)
-        printer(f"Loading {args.vel_name} fields for time: {ftime}")
+        printer(f"Loading fields for time: {ftime}")
 
         interior = mesh.meta.get_part(interiorname)
         sel = interior & mesh.meta.locally_owned_part
         velocity = mesh.meta.get_field(args.vel_name)
-        names = ["x", "y", "z", "u", "v", "w"]
+        turbvisc = mesh.meta.get_field("turbulent_viscosity")
+        turbke = mesh.meta.get_field("turbulent_ke")
+        names = ["x", "y", "z", "u", "v", "w", "nut","k"]
         nnodes = sum(bkt.size for bkt in mesh.iter_buckets(sel, stk.StkRank.NODE_RANK))
 
         cnt = 0
@@ -179,7 +183,9 @@ if __name__ == "__main__":
         for bkt in mesh.iter_buckets(sel, stk.StkRank.NODE_RANK):
             xyz = coords.bkt_view(bkt)
             vel = velocity.bkt_view(bkt)
-            data[cnt : cnt + bkt.size, :] = np.hstack((xyz, vel))
+            tv = turbvisc.bkt_view(bkt)
+            tke = turbke.bkt_view(bkt)
+            data[cnt : cnt + bkt.size, :] = np.hstack((xyz, vel, tv.reshape(-1, 1), tke.reshape(-1, 1)))
             cnt += bkt.size
 
         if vel_data is None:
@@ -219,26 +225,12 @@ if __name__ == "__main__":
             wmean = griddata(
                 (df.x, df.z), df.w, (xi[None, :], zi[:, None]), method="cubic"
             ).flatten()
-
-            # Old way:
-            # zi = np.unique(df.z)
-            # xis = np.array(np.meshgrid(xi, yi, zi)).T.reshape(-1, 3)
-
-            # # Equivalent to:
-            # # ui = spi.griddata(
-            # #     (df.x, df.y, df.z),
-            # #     df.u,
-            # #     (xi[None, None, :], yi[None, :, None], zi[:, None, None]),
-            # #     method="linear",
-            # # )
-            # # but saves the wts for reuse
-            # vtx, wts = interp_weights(df[["x", "y", "z"]].values, xis)
-            # ui = interpolate(df.u.values, vtx, wts).reshape(-1, ninterp)
-            # vi = interpolate(df.v.values, vtx, wts).reshape(-1, ninterp)
-            # wi = interpolate(df.w.values, vtx, wts).reshape(-1, ninterp)
-            # umean = np.mean(ui, axis=0).flatten()
-            # vmean = np.mean(vi, axis=0).flatten()
-            # wmean = np.mean(wi, axis=0).flatten()
+            nutmean = griddata(
+                (df.x, df.z), df.nut, (xi[None, :], zi[:, None]), method="cubic"
+            ).flatten()
+            kmean = griddata(
+                (df.x, df.z), df.k, (xi[None, :], zi[:, None]), method="cubic"
+            ).flatten()
 
             planes.append(
                 pd.DataFrame(
@@ -248,6 +240,8 @@ if __name__ == "__main__":
                         "u": umean,
                         "v": vmean,
                         "w": wmean,
+                        "nut": nutmean,
+                        "k_sgs": kmean
                     }
                 )
             )
