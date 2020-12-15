@@ -18,10 +18,14 @@ import sys
 # Define constants
 #
 # ========================================================================
-channel_xplanes = [4]
-dx              = 0.1
+
 ninterp         = 201
-interiorname    = "fluid-hex"  # "interior-hex"
+Lx              = 8.0
+Ly              = 3.0
+Lz              = 2.0
+Ox              = 0.0
+Oy              = 0.0
+Oz              = 0.0
 
 # ========================================================================
 #
@@ -95,6 +99,19 @@ if __name__ == "__main__":
         type=float,
         default=1.2,
     )
+    parser.add_argument(
+        "-i",
+        "--interiorname",
+        help="Name of interior block (i.e. fluid-hex)",
+        type=str,
+        default="fluid-hex",
+    )
+    parser.add_argument(
+        "-sdx",
+        help="Streamwise cell length",
+        type=float,
+        default=0.1,
+    )
     args = parser.parse_args()
 
     fdir = os.path.dirname(args.mfile)
@@ -166,11 +183,13 @@ if __name__ == "__main__":
 
     # Extract (average) velocity data
     vel_data = None
+    rij_data = None
+
     for tstep in tavg:
         ftime, missing = mesh.stkio.read_defined_input_fields(tstep)
-        printer(f"Loading X fields for time: {ftime}")
+        printer(f"Loading fields for time: {ftime}")
 
-        interior = mesh.meta.get_part(interiorname)
+        interior = mesh.meta.get_part(args.interiorname)
         sel = interior & mesh.meta.locally_owned_part
         velocity = mesh.meta.get_field(args.vel_name)
         turbvisc = mesh.meta.get_field("turbulent_viscosity")
@@ -191,21 +210,62 @@ if __name__ == "__main__":
         if vel_data is None:
             vel_data = np.zeros(data.shape)
         vel_data += data / len(tavg)
+    
+    # Second loop for fluctuating vels
+    for tstep in tavg:
+        ftime, missing = mesh.stkio.read_defined_input_fields(tstep)
+        printer(f"Loading fields for time: {ftime}")
 
-    #if rank == 0:
-        #pd.DataFrame(vel_data).to_csv(os.path.join(fdir, "vel_tmp.dat"), index=False)
+        interior = mesh.meta.get_part(args.interiorname)
+        sel = interior & mesh.meta.locally_owned_part
+        velocity = mesh.meta.get_field(args.vel_name)
+        rijnames = ["x", "y", "z","uu","vv","ww","uv"]
+        nnodes = sum(bkt.size for bkt in mesh.iter_buckets(sel, stk.StkRank.NODE_RANK))
+
+        cnt = 0
+        rijdata = np.zeros((nnodes, len(rijnames)))
+        for bkt in mesh.iter_buckets(sel, stk.StkRank.NODE_RANK):
+            xyz = coords.bkt_view(bkt)
+            vel = velocity.bkt_view(bkt)
+            rijdata[cnt : cnt + bkt.size, :] = np.hstack((xyz, vel, 0*vel[:,0].reshape(-1, 1)))
+            cnt += bkt.size
+
+        if rij_data is None:
+            rij_data = np.zeros(rijdata.shape)
+        rij_data[:,0] = rijdata[:,0] 
+        rij_data[:,1] = rijdata[:,1] 
+        rij_data[:,2] = rijdata[:,2] 
+        rij_data[:,3] += ((rijdata[:,3] - vel_data[:,3])**2) / len(tavg)
+        rij_data[:,4] += ((rijdata[:,4] - vel_data[:,4])**2) / len(tavg)
+        rij_data[:,5] += ((rijdata[:,5] - vel_data[:,5])**2) / len(tavg)
+        rij_data[:,6] += (rijdata[:,3] - vel_data[:,3])*(rijdata[:,4] - vel_data[:,4]) / len(tavg)
+
     # Subset the velocities on planes
     #dx = 0.05 * 4
     planes = []
+    fplanes = []
+    dx = args.sdx
+
     #for x in utilities.xplanes():
-    for x in channel_xplanes:
+    npointsx = (int(Lx/dx)+1)
+    xavg = pd.DataFrame()
+    fxavg = pd.DataFrame()
+
+    for x in np.linspace(Ox,Lx,num=npointsx):
         print(" === x=%f ==="%x)
         # subset the data around the plane of interest
         sub = vel_data[(x - dx/1.5 <= vel_data[:, 0]) & (vel_data[:, 0] <= x + dx/1.5), :]
+        fsub = rij_data[(x - dx/1.5 <= rij_data[:, 0]) & (rij_data[:, 0] <= x + dx/1.5), :]
+
+        sub[:,0] = np.around(np.ones(np.shape(sub[:,0]))*x,decimals=3) 
+        sub[:,1] = np.around(sub[:,1],decimals=3) 
+        sub[:,2] = np.around(sub[:,2],decimals=6)
+        fsub[:,0] = np.around(np.ones(np.shape(fsub[:,0]))*x,decimals=3)
+        fsub[:,1] = np.around(fsub[:,1],decimals=4)
+        fsub[:,2] = np.around(fsub[:,2],decimals=6)
 
         lst = comm.gather(sub, root=0)
-
-        pd.DataFrame(sub).to_csv(os.path.join(fdir, "sub_tmp.dat"), index=False)
+        flst = comm.gather(fsub, root=0)
 
         comm.Barrier()
         if rank == 0:
@@ -216,40 +276,40 @@ if __name__ == "__main__":
                 .mean()
                 .sort_values(by=["x", "z"])
             )
-            zmin, zmax = df.z.min(), df.z.max() #utilities.hill(xi)[0], df.y.max()
-            print("zmin, zmax = %e,%e"%(zmin, zmax))
-            zi = np.linspace(zmin, zmax, ninterp)
-
-            umean = griddata(
-                (df.x, df.z), df.u, (xi[None, :], zi[:, None]), method="cubic"
-            ).flatten()
-            vmean = griddata(
-                (df.x, df.z), df.v, (xi[None, :], zi[:, None]), method="cubic"
-            ).flatten()
-            wmean = griddata(
-                (df.x, df.z), df.w, (xi[None, :], zi[:, None]), method="cubic"
-            ).flatten()
-            nutmean = griddata(
-                (df.x, df.z), df.nut, (xi[None, :], zi[:, None]), method="cubic"
-            ).flatten()
-            kmean = griddata(
-                (df.x, df.z), df.k, (xi[None, :], zi[:, None]), method="cubic"
-            ).flatten()
-
-            planes.append(
-                pd.DataFrame(
-                    {
-                        "x": x * np.ones(zi.shape),
-                        "z": zi,
-                        "u": umean,
-                        "v": vmean,
-                        "w": wmean,
-                        "nut": nutmean,
-                        "k_sgs": kmean
-                    }
-                )
+            fdf = (
+                pd.DataFrame(np.vstack(flst), columns=rijnames)
+                .groupby(["x", "z"], as_index=False)
+                .mean()
+                .sort_values(by=["x", "z"])
             )
-
+            
+            print("npointsx: " + str(npointsx))
+            planes.append(df)
+            if x == Ox:
+                print("First avg")
+                xavg = df.div(npointsx)
+            if x > Ox:
+                print("More avg" + str(xavg.z.max()))
+                xavg += df.div(npointsx)
+            
+            fplanes.append(fdf)
+            if x == Ox:
+                fxavg = fdf.div(npointsx)
+            if x > Ox:
+                fxavg += fdf.div(npointsx)
+            
     if rank == 0:
+        xavg.x = np.around(xavg.x,decimals=3) 
+        xavg.z = np.around(xavg.z,decimals=6) 
+        xavg.y = np.around(xavg.y,decimals=3)
+        fxavg.x = np.around(fxavg.x,decimals=3) 
+        fxavg.z = np.around(fxavg.z,decimals=6) 
+        fxavg.y = np.around(fxavg.y,decimals=3)
+
         df = pd.concat(planes)
         df.to_csv(os.path.join(fdir, "profiles.dat"), index=False)
+        xavg.to_csv(os.path.join(fdir, "xavg.dat"), index=False)
+
+        fdf = pd.concat(fplanes)
+        fdf.to_csv(os.path.join(fdir, "rij_profiles.dat"), index=False)
+        fxavg.to_csv(os.path.join(fdir, "rij_xavg.dat"), index=False)
