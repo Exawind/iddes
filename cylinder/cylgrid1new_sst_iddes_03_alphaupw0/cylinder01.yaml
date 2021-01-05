@@ -1,0 +1,240 @@
+Simulations:
+- name: sim1
+  time_integrator: ti_1
+  optimizer: opt1
+
+linear_solvers:
+
+- name: solve_scalar
+  type: tpetra
+  method: gmres
+  preconditioner: sgs
+  tolerance: 1e-5
+  max_iterations: 200
+  kspace: 200
+  output_level: 0
+
+- name: solve_cont
+  type: hypre
+  method: hypre_gmres
+  preconditioner: boomerAMG
+  tolerance: 1e-5
+  max_iterations: 200
+  kspace: 75
+  output_level: 0
+  bamg_coarsen_type: 8
+  bamg_interp_type: 6
+  bamg_cycle_type: 1
+
+- name: solve_mom
+  type: hypre
+  method: hypre_gmres
+  preconditioner: boomerAMG
+  tolerance: 1e-5
+  max_iterations: 200
+  kspace: 75
+  output_level: 0
+  segregated_solver: yes
+  bamg_max_levels: 1
+  bamg_relax_type: 6
+  bamg_num_sweeps: 1
+
+realms:
+
+- name: realm_1
+  mesh: rst_rans/cylinder.rst
+  use_edges: yes
+
+  equation_systems:
+    name: theEqSys
+    max_iterations: 4
+    decoupled_overset_solve: yes
+
+    solver_system_specification:
+      velocity: solve_scalar
+      turbulent_ke: solve_scalar
+      specific_dissipation_rate: solve_scalar
+      pressure: solve_cont
+      ndtw: solve_cont
+
+    systems:
+    - WallDistance:
+        name: myNDTW
+        max_iterations: 1
+        convergence_tolerance: 1.0e-8
+        update_frequency: 1000000000
+
+    - LowMachEOM:
+        name: myLowMach
+        max_iterations: 1
+        convergence_tolerance: 1e-8
+
+    - ShearStressTransport:
+        name: mySST
+        max_iterations: 1
+        convergence_tolerance: 1e-8
+
+  initial_conditions:
+  - constant: ic_1
+    target_name:
+    - fluid-HEX
+    - fluid-WEDGE
+    value:
+      pressure: 0
+      velocity: [20.0, 0.0, 0.0]
+      turbulent_ke: 0.095118
+      specific_dissipation_rate: 2266.4
+
+  material_properties:
+    target_name:
+    - fluid-HEX
+    - fluid-WEDGE
+    specifications:
+    - name: density
+      type: constant
+      value: 1.225
+    - name: viscosity
+      type: constant
+      value: 1.8375e-5
+
+  boundary_conditions:
+
+  - wall_boundary_condition: bc_wall
+    target_name: cylinder
+    wall_user_data:
+      use_wall_function: no
+      velocity: [0.0, 0.0, 0.0]
+      turbulent_ke: 0.0
+
+  - inflow_boundary_condition: bc_inflow
+    target_name: inlet
+    inflow_user_data:
+      velocity: [20.0, 0.0, 0.0]
+      turbulent_ke: 0.095118
+      specific_dissipation_rate: 2266.4
+
+  - open_boundary_condition: bc_open
+    target_name: outlet
+    open_user_data:
+      velocity: [0.0, 0.0, 0.0]
+      pressure: 0.0
+      turbulent_ke: 0.095118
+      specific_dissipation_rate: 2266.4
+
+  - symmetry_boundary_condition: strongSymBot
+    target_name: SymmetryBottom
+    symmetry_user_data:
+      symmetry_type: y_direction_strong
+
+  - symmetry_boundary_condition: strongSymTop
+    target_name: SymmetryTop
+    symmetry_user_data:
+      symmetry_type: y_direction_strong
+
+  - periodic_boundary_condition: bc_east_west
+    target_name: [PeriodicMinusZ, PeriodicPlusZ]
+    periodic_user_data:
+      search_tolerance: 0.000001
+
+  solution_options:
+    name: myOptions
+    turbulence_model: sst_iddes
+    projected_timescale_type: momentum_diag_inv
+
+    options:
+    - hybrid_factor:
+        velocity: 1.0
+        turbulent_ke: 1.0
+        specific_dissipation_rate: 1.0
+
+    - alpha_upw:
+        velocity: 0.0
+        turbulent_ke: 1.0
+        specific_dissipation_rate: 1.0
+
+    - upw_factor:
+        velocity: 1.0
+        turbulent_ke: 0.0
+        specific_dissipation_rate: 0.0
+
+    - noc_correction:
+        pressure: yes
+
+    - limiter:
+        pressure: no
+        velocity: yes
+        turbulent_ke: yes
+        specific_dissipation_rate: yes
+
+    - projected_nodal_gradient:
+        velocity: element
+        pressure: element
+        turbulent_ke: element
+        specific_dissipation_rate: element
+        ndtw: element
+
+    - relaxation_factor:
+        velocity: 0.7
+        pressure: 0.3
+        turbulent_ke: 0.7
+        specific_dissipation_rate: 0.7
+
+  post_processing:
+  - type: surface
+    physics: surface_force_and_moment
+    output_file_name: forces01.dat
+    frequency: 1
+    parameters: [0, 0]
+    target_name:
+    - cylinder
+
+  turbulence_averaging:
+    time_filter_interval: 100000.0
+    specifications:
+    - name: one
+      target_name:
+      - fluid-HEX
+      - fluid-WEDGE
+      reynolds_averaged_variables:
+      - velocity
+      compute_q_criterion: yes
+      compute_vorticity: yes
+
+  restart:
+    restart_data_base_name: rst01/cylinder.rst
+    restart_frequency: 1000
+    restart_start: 360
+    restart_time: 10000000000.0
+
+  output:
+    output_data_base_name: out01/cylinder.e
+    output_frequency: 100
+    output_node_set: no
+    output_variables:
+    - velocity
+    - pressure
+    - turbulent_ke
+    - specific_dissipation_rate
+    - minimum_distance_to_wall
+    - turbulent_viscosity
+    - iblank
+    - iblank_cell
+    - mesh_displacement
+    - q_criterion
+    - vorticity
+    - alpha_upw
+    - iddes_rans_indicator
+
+
+Time_Integrators:
+- StandardTimeIntegrator:
+    name: ti_1
+    start_time: 0
+    time_step: 0.003
+    termination_step_count: 30000
+    time_stepping_type: fixed
+    time_step_count: 0
+    second_order_accuracy: yes
+
+    realms:
+    - realm_1
