@@ -1,0 +1,3 @@
+# Experimental values from Fig. 34
+cl,cd
+0.35832, 0.0043
